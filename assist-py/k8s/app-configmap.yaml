@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pukharev-configmap
+data:
+  CACHE_TTL: "3600"
+  POSTGRES_USER: user_467203
+  POSTGRES_DB: pukharev03
+  REDIS_URL: redis://pukharev-redis:6379/0
+  APP_OWNER: pukharev

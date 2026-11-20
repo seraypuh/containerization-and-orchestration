@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: pukharev-app
+  name: pukharev-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pukharev-app
+  template:
+    metadata:
+      labels:
+        app: pukharev-app
+    spec:
+      containers:
+      - image: assist-py-app:latest
+        name: assist-py-app
+        imagePullPolicy: Never
+        envFrom:
+        - configMapRef:
+            name: pukharev-configmap
+        - secretRef:
+            name: pukharev-secret
+        ports:
+        - containerPort: 5433

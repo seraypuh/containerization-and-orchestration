@@ -19,6 +19,5 @@ __pycache__/
 .DS_Store
 
 
-k8s/app-secret.yamlminikube-darwin-*
-assist-py/k8s/app-secret.yaml
+minikube-darwin-*
 app-secret.yaml
