@@ -25,3 +25,15 @@ spec:
             name: pukharev-secret
         ports:
         - containerPort: 5433
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 5433
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 5433
+          initialDelaySeconds: 15
+          periodSeconds: 20

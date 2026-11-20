@@ -1,0 +1,17 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pukharev-ingress
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: pukharev.local
+    http:
+      paths:
+      - backend:
+          service:
+            name: pukharev-app
+            port:
+              number: 8003
+        path: /
+        pathType: Prefix
