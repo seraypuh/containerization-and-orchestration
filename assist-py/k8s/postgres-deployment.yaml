@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: pukharev-postgres
+  name: pukharev-postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pukharev-postgres
+  template:
+    metadata:
+      labels:
+        app: pukharev-postgres
+    spec:
+      containers:
+      - image: postgres:15
+        name: postgres
+        ports:
+        - containerPort: 5432
+        volumeMounts:
+        - mountPath: /var/lib/postgresql/data
+          name: postgres-storage
+        env:
+        - name: POSTGRES_USER
+          value: user_467203
+        - name: POSTGRES_PASSWORD
+          value: pgpass_467203
+        - name: POSTGRES_DB
+          value: pukharev03
+      volumes:
+        - name: postgres-storage
+          persistentVolumeClaim:
+            claimName: pukharev-postgres-pvc

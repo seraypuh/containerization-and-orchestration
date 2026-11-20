@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: pukharev-redis
+  name: pukharev-redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pukharev-redis
+  template:
+    metadata:
+      labels:
+        app: pukharev-redis
+    spec:
+      containers:
+      - image: redis:7-alpine
+        name: redis
+        ports:
+        - containerPort: 6379
