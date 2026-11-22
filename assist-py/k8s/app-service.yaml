@@ -10,6 +10,7 @@ spec:
     port: 8003
     protocol: TCP
     targetPort: 5433
+    nodePort: 30003
   selector:
     app: pukharev-app
   type: NodePort

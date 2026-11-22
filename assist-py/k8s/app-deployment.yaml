@@ -5,7 +5,7 @@ metadata:
     app: pukharev-app
   name: pukharev-app
 spec:
-  replicas: 1
+  replicas: 4
   selector:
     matchLabels:
       app: pukharev-app
@@ -14,10 +14,17 @@ spec:
       labels:
         app: pukharev-app
     spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: pukharev-app
       containers:
-      - image: assist-py-app:latest
+      - image: ghcr.io/seraypuh/containerization-and-orchestration:sha-9d68736
         name: assist-py-app
-        imagePullPolicy: Never
+        # imagePullPolicy: Never
         envFrom:
         - configMapRef:
             name: pukharev-configmap
