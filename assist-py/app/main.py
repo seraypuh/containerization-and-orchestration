@@ -59,7 +59,7 @@ def _meta() -> dict:
 @app.get("/")
 async def root():
     return {
-        "message": f"👋 Привет, {OWNER}!",
+        "message": f"👋 Я ИЗМЕНИЛ ПРИВЕТСТВИЕ, И ЭТО ТРУДНО НЕ ЗАМЕТИТЬ! ДА, {OWNER}?",
         "service": "personal-assistant",
         "version": "3.0",
         "endpoints": [
