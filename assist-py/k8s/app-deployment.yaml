@@ -22,7 +22,7 @@ spec:
             matchLabels:
               app: pukharev-app
       containers:
-      - image: ghcr.io/seraypuh/containerization-and-orchestration:sha-9d68736
+      - image: ghcr.io/seraypuh/containerization-and-orchestration:sha-3b393ea
         name: assist-py-app
         # imagePullPolicy: Never
         envFrom:
