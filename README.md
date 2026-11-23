@@ -1,133 +1,164 @@
-# Лабораторная работа 5 — Введение в Kubernetes: развёртывание приложения с PostgreSQL и Redis
+# Лабораторная работа 6 -- Kubernetes на двух машинах и CI/CD: автоматическая сборка образа и выкатка в кластер
 
-Веб-сервис персонального ассистента на базе **FastAPI** с использованием **PostgreSQL** для хранения данных и **Redis** для кэширования запросов, развёрнутый в локальном кластере Kubernetes (`minikube`).
+[![ci](https://github.com/seraypuh/containerization-and-orchestration/actions/workflows/ci.yml/badge.svg?branch=lab-6)](https://github.com/seraypuh/containerization-and-orchestration/actions/workflows/ci.yml)
 
-## Архитектура и стек технологий
+Веб-приложение на базе **FastAPI**, **PostgreSQL** и **Redis**, развёрнутое в двухнодовом кластере **k3s** с автоматической сборкой мультиархитектурных Docker-образов (`linux/amd64`, `linux/arm64`) в **GitHub Actions** и публикацией в **GitHub Container Registry (GHCR)**.
 
-* **Backend:** Python 3.12, FastAPI, Uvicorn, SQLAlchemy
-* **База данных:** PostgreSQL 15 (с постоянным хранилищем `PersistentVolumeClaim`)
-* **Кэш:** Redis 7 (Alpine)
-* **Оркестрация:** Kubernetes (`minikube`, `kubectl`)
-* **Маршрутизация:** `NodePort` Service + Nginx `Ingress`
+---
 
-### Компоненты Kubernetes (`k8s/`)
+## Содержание
 
-| Ресурс | Имя объекта | Назначение |
-| :--- | :--- | :--- |
-| `PersistentVolumeClaim` | `pukharev-postgres-pvc` | Постоянный том (`1Gi`, `ReadWriteOnce`) для хранения данных PostgreSQL |
-| `Deployment` | `pukharev-postgres` | Под с СУБД PostgreSQL 15 (порт `5432`) |
-| `Service` (`ClusterIP`) | `pukharev-postgres` | Внутренний DNS-доступ к БД внутри кластера |
-| `Deployment` | `pukharev-redis` | Под с кэшем Redis 7 (порт `6379`) |
-| `Service` (`ClusterIP`) | `pukharev-redis` | Внутренний DNS-доступ к Redis внутри кластера |
-| `ConfigMap` | `pukharev-configmap` | Несекретные переменные окружения (`APP_OWNER`, `CACHE_TTL`, `REDIS_URL`, и др.) |
-| `Secret` | `pukharev-secret` | Чувствительные данные (`APP_SECRET`, `POSTGRES_PASSWORD`, `DATABASE_URL`) |
-| `Deployment` | `pukharev-app` | Под с FastAPI-приложением (порт `5433`), настроены `readinessProbe` и `livenessProbe` |
-| `Service` (`NodePort`) | `pukharev-app` | Проброс порта сервиса `8003` на `targetPort: 5433` |
-| `Ingress` | `pukharev-ingress` | L7-маршрутизация внешнего трафика по домену `pukharev.local` |
+- [Персональные параметры](#персональные-параметры)
+- [Структура проекта](#структура-проекта)
+- [CI/CD и кластер](#cicd-и-кластер)
+  - [Схема узлов и их роли](#схема-узлов-и-их-роли)
+  - [Как выкатить новую версию](#как-выкатить-новую-версию)
+  - [Как откатить версию](#как-откатить-версию)
+- [Развёртывание с нуля](#развёртывание-с-нуля)
+- [Проверка работоспособности](#проверка-работоспособности)
+
+---
+
+## Персональные параметры
+
+| Параметр | Значение |
+| :--- | :--- |
+| **Автор** | Пухарев Сергей Валерьевич |
+| **Номер ИСУ** | `467203` |
+| **Персональный префикс** | `pukharev` |
+| **NodePort приложения** | `30003` |
+| **Имя базы данных** | `pukharev03` |
+| **Образ в GHCR** | `ghcr.io/seraypuh/containerization-and-orchestration` |
+
+---
 
 ## Структура проекта
 
 ```text
-assist-py/
-├── app/                         # Исходный код FastAPI-приложения
-│   ├── crud.py                  # Операции с БД
-│   ├── database.py              # Подключение к PostgreSQL
-│   ├── main.py                  # Эндпоинты API и интеграция с Redis
-│   └── models.py                # ORM-модели SQLAlchemy
-├── config/
-│   └── app.conf                 # Конфигурация приложения
-├── k8s/                         # Манифесты Kubernetes
-│   ├── app-configmap.yaml       # Конфигурация приложения (ConfigMap)
-│   ├── app-deployment.yaml      # Деплоймент приложения с health-пробами
-│   ├── app-ingress.yaml         # Правила маршрутизации Nginx Ingress
-│   ├── app-secret.yaml          # Секреты (исключён из Git через .gitignore)
-│   ├── app-service.yaml         # Сервис NodePort для приложения
-│   ├── postgres-deployment.yaml # Деплоймент PostgreSQL с монтированием PVC
-│   ├── postgres-pvc.yaml        # Запрос на выделение постоянного тома
-│   ├── postgres-service.yaml    # Сервис ClusterIP для PostgreSQL
-│   ├── redis-deployment.yaml    # Деплоймент Redis
-│   └── redis-service.yaml       # Сервис ClusterIP для Redis
-├── app-secret.example.yaml      # Шаблон манифеста Secret без реальных паролей
-├── Dockerfile                   # Сборка образа приложения
-├── docker-compose.yml           # Локальный запуск через Docker Compose
-├── requirements.txt             # Python-зависимости
-└── README.md
+.
+├── .github/
+│   └── workflows/
+│       └── ci.yml                  # CI-пайплайн: проверка синтаксиса, сборка и публикация в GHCR
+└── solutions/
+    └── assist-py/
+        ├── app/                    # Исходный код FastAPI-приложения
+        │   ├── main.py
+        │   ├── database.py
+        │   ├── models.py
+        │   └── crud.py
+        ├── k8s/                    # Манифесты Kubernetes
+        │   ├── app-configmap.yaml
+        │   ├── app-deployment.yaml
+        │   ├── app-service.yaml
+        │   ├── postgres-deployment.yaml
+        │   ├── postgres-pvc.yaml
+        │   ├── postgres-service.yaml
+        │   ├── redis-deployment.yaml
+        │   └── redis-service.yaml
+        ├── app-secret.example.yaml # Шаблон файла секретов (сам app-secret.yaml в .gitignore)
+        ├── Dockerfile
+        ├── requirements.txt
+        └── README.md
 ```
 
-## Быстрый старт (Kubernetes / Minikube)
+---
 
-### 1. Предварительные требования
-* Установленные `docker`, `minikube` и `kubectl`
-* Запущенный кластер:
-  ```bash
-  minikube start --driver=docker
-  ```
+## CI/CD и кластер
 
-### 2. Сборка и загрузка локального Docker-образа
-Соберите образ приложения и загрузите его во внутренний реестр `minikube`:
-```bash
-docker build -t assist-py-app:latest .
-minikube image load assist-py-app:latest
+### Схема узлов и их роли
+
+Кластер развёрнут на базе **k3s** на двух виртуальных машинах Ubuntu 24.04 (Multipass), объединённых в общую локальную сеть (Bridged / виртуальный коммутатор):
+
+```text
+                        [ Внешний запрос: NodePort :30003 ]
+                                         │
+                        ┌────────────────┴────────────────┐
+                        ▼                                 ▼
+         ┌─────────────────────────────┐   ┌─────────────────────────────┐
+         │      pukharev-master        │   │      pukharev-worker        │
+         │  Role: control-plane, db    │   │         Role: app           │
+         │                             │   │                             │
+         │  • k3s server (API, etcd)   │   │  • k3s agent (kubelet)      │
+         │  • pukharev-app (2 pods)    │◄─►│  • pukharev-app (2 pods)    │
+         │  • pukharev-postgres (1 pod)│   │  • pukharev-redis (1 pod)   │
+         │  • PVC (local-path storage) │   │                             │
+         └─────────────────────────────┘   └─────────────────────────────┘
 ```
 
-### 3. Подготовка секретов
-Скопируйте шаблон секрета в рабочую директорию манифестов и заполните реальными значениями:
-```bash
-cp app-secret.example.yaml k8s/app-secret.yaml
-```
+- **`pukharev-master`** (`role=db`, `control-plane`) — управляющий узел кластера. Запускает системные компоненты Kubernetes, 2 реплики приложения `pukharev-app` и единственный инстанс базы данных `pukharev-postgres` (жёстко привязан через `nodeSelector: role=db` из-за использования локального хранилища `local-path`).
+- **`pukharev-worker`** (`role=app`) — рабочий узел. Запускает 2 реплики приложения `pukharev-app` и кэш `pukharev-redis`. Равномерное распределение подов приложения между двумя узлами (`2 + 2`) обеспечивается правилом `topologySpreadConstraints` (`maxSkew: 1`).
 
-### 4. Развёртывание в кластере
-Примените все манифесты и дождитесь перехода подов в статус `Running`:
-```bash
-kubectl apply -f k8s/
-kubectl get pods,svc,pvc
-```
+### Как выкатить новую версию
 
-## Доступ к приложению и проверка API
-
-### Вариант А: Через туннель NodePort
-Откройте туннель до сервиса `pukharev-app` (терминал должен оставаться открытым):
-```bash
-minikube service pukharev-app --url
-```
-
-### Вариант Б: Через Nginx Ingress (`pukharev.local`)
-1. Включите аддон Ingress в `minikube`:
+1. Внести изменения в код приложения (`solutions/assist-py/app/`) и отправить коммит в ветку `lab-6`:
    ```bash
-   minikube addons enable ingress
+   git add .
+   git commit -m "feat: update greeting message"
+   git push origin lab-6
    ```
-2. Добавьте локальный домен в `/etc/hosts` и запустите туннель (для macOS с Docker-драйвером):
+2. Дождаться успешного выполнения обоих джобов (`test` и `build-and-push`) во вкладке **GitHub Actions** и скопировать новый тег с коротким SHA коммита (например, `sha-<новый_sha>`).
+3. Выполнить обновление образа в кластере без простоя (Rolling Update):
    ```bash
-   echo "127.0.0.1 pukharev.local" | sudo tee -a /etc/hosts
-   sudo minikube tunnel
+   kubectl set image deployment/pukharev-app assist-py-app=ghcr.io/seraypuh/containerization-and-orchestration:sha-<новый_sha>
+   kubectl rollout status deployment/pukharev-app
+   ```
+4. Синхронизировать манифест в репозитории (GitOps): обновить поле `image:` в `solutions/assist-py/k8s/app-deployment.yaml`, закоммитить изменение и выполнить `kubectl apply -f k8s/`.
+
+### Как откатить версию
+
+1. Просмотреть историю ревизий деплоймента:
+   ```bash
+   kubectl rollout history deployment/pukharev-app
+   ```
+2. Откатить приложение на предыдущую рабочую ревизию (или на конкретную ревизию через `--to-revision=<N>`):
+   ```bash
+   kubectl rollout undo deployment/pukharev-app
+   kubectl rollout status deployment/pukharev-app
    ```
 
-### Примеры запросов для проверки
-Задайте базовый URL (например, `BASE_URL=http://pukharev.local` или адрес из `minikube service`):
+---
+
+## Развёртывание с нуля
+
+1. Перейдите в каталог приложения на управляющем узле (`pukharev-master`):
+   ```bash
+   cd solutions/assist-py
+   ```
+2. Создайте файл секретов `k8s/app-secret.yaml` на основе шаблона `app-secret.example.yaml` (файл исключён из Git через `.gitignore`):
+   ```bash
+   cp app-secret.example.yaml k8s/app-secret.yaml
+   ```
+   Заполните в `k8s/app-secret.yaml` значения `APP_SECRET`, `POSTGRES_PASSWORD` и `DATABASE_URL`.
+3. Примените манифесты Kubernetes:
+   ```bash
+   kubectl apply -f k8s/
+   ```
+4. Убедитесь, что все поды перешли в состояние `Running` и распределены по обоим узлам:
+   ```bash
+   kubectl get pods -o wide
+   ```
+
+---
+
+## Проверка работоспособности
 
 ```bash
-# Информация о сервисе и имени пода
-curl $BASE_URL/
+# Проверка статуса сервиса и владельца приложения (APP_OWNER)
+curl http://<IP_узла>:30003/
+curl http://<IP_узла>:30003/health
 
-# Проверка состояния PostgreSQL и Redis
-curl $BASE_URL/health
+# Проверка балансировки нагрузки между репликами на разных узлах
+for i in $(seq 1 10); do
+  curl -s http://<IP_узла>:30003/ | python3 -c "import sys,json; print(json.load(sys.stdin).get('hostname'))"
+done
 
-# Проверка кэширования погоды (1-й запрос — API, 2-й — Redis cache)
-curl $BASE_URL/weather/Moscow
-curl $BASE_URL/weather/Moscow
-curl $BASE_URL/cache/stats
+# Проверка кэширования в Redis (первый запрос -> api, второй -> cache)
+curl http://<IP_master>:30003/weather/Moscow
+curl http://<IP_worker>:30003/weather/Moscow
 
-# Работа с заметками в PostgreSQL
-curl -X POST $BASE_URL/notes \
+# Проверка записи и чтения из PostgreSQL через разные узлы
+curl -X POST http://<IP_master>:30003/notes \
   -H "Content-Type: application/json" \
-  -d '{"text": "Заметки работают"}'
-curl $BASE_URL/notes
-```
-
-## Остановка и очистка ресурсов
-
-Удаление ресурсов из кластера и остановка `minikube`:
-```bash
-kubectl delete -f k8s/
-minikube stop
+  -d '{"text": "ЛР6: кластер из двух узлов"}'
+curl http://<IP_worker>:30003/notes
 ```
